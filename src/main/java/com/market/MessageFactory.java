@@ -33,7 +33,7 @@ public class MessageFactory {
                 insertLastMessInDB('1');
                 return;
             }
-            if (update.getCallbackQuery().getData().equals("showitems")) {
+            else if (update.getCallbackQuery().getData().equals("showitems")) {
                 int k = 1;
                 if (getItems().length != 0 && !getItems()[0].equals("")) {
                     insertLastMessInDB('0');
@@ -42,52 +42,118 @@ public class MessageFactory {
                                 ". " + getItems()[i].split(":")[0];
                         k++;
                     }
-                    hasCallBack(update, "There are next items now: " + allItems, showButtons(true, getIdItems(), true));
+                    hasCallBack(update, "There are next items now: " + allItems, showButtons(true,
+                            getIdItems(), true));
                     return;
                 } else {
                     insertLastMessInDB('0');
-                    hasCallBack(update, "There are no items now.", showButtons(true, new String[]{""}, true));
+                    hasCallBack(update, "There are no items now.", showButtons(true,
+                            new String[]{""}, true));
                     return;
                 }
             }
-            if (update.getCallbackQuery().getData().equals("noanyitems") || update.getCallbackQuery().getData().equals("mainmenu")) {
+           else if (update.getCallbackQuery().getData().split("&")[0].equals("accept")) {
+               String deletedItemId = update.getCallbackQuery().getData().split("&")[1];
+               String requestorTelegramId = update.getCallbackQuery().getData().split("&")[2];
+                responceToDelete(update,true, requestorTelegramId, deletedItemId);
+                return;
+            }
+           else if (update.getCallbackQuery().getData().split("&")[0].equals("decline")) {
+                String deletedItemId = update.getCallbackQuery().getData().split("&")[1];
+                String requestorTelegramId = update.getCallbackQuery().getData().split("&")[2];
+                responceToDelete(update,false, requestorTelegramId, deletedItemId);
+                return;
+            }
+
+            else if (update.getCallbackQuery().getData().equals("noanyitems")
+                    || update.getCallbackQuery().getData().equals("mainmenu")) {
                 insertLastMessInDB('0');
-                hasCallBack(update, "Hello!", showButtons(true, new String[]{"Add new items:toadd", "Show all items:showitems"}, false));
+                hasCallBack(update, "Hello!", showButtons(true, new String[]{"Add new items:toadd",
+                        "Show all items:showitems"}, false));
                 return;
             }
             for (int i = 0; i < getIdItems().length; i++) {
                 if (update.getCallbackQuery().getData().equals(getIdItems()[i].split(":")[1])) {
-                    sendQuery("delete FROM items WHERE id = " + getIdItems()[i].split(":")[1] + ";");
+                    requestToDelete(update, i);
 
                     if (getItems().length != 0 && !getItems()[0].equals("")) {
                         for (int j = 0; j < getItems().length; j++) {
                             allItems = allItems + '\n' + (j + 1) +
                                     ". " + getItems()[j].split(":")[0];
                         }
-                        hasCallBack(update, "There are next items now: " + allItems, showButtons(true, getIdItems(), true));
-                    } else hasCallBack(update, "There are no items now.", showButtons(true, new String[]{""}, true));
+                        hasCallBack(update, "There are next items now: " + allItems,
+                                showButtons(true, getIdItems(), true));
+                    } else hasCallBack(update, "There are no items now.", showButtons(true,
+                            new String[]{""}, true));
                     return;
                 }
             }
-            return;
         } else if (update.hasMessage() && update.getMessage().hasText()) {
             telegramId = update.getMessage().getChatId();
             if (update.getMessage().getText().equals("/start")) {
                 startMenu(update);
-                return;
             }
-            if (getLastMessageType() == '1') {
+            else if (getLastMessageType() == '1') {
                 item = update.getMessage().getText();
                 sendQuery("INSERT INTO items (telegramid , item) VALUES (" + telegramId + ",  '" + item + " (@" +
                         update.getMessage().getChat().getUserName() + ")" + "');");
                 hasMessage(update, "Add another item",
                         showButtons(true, new String[]{"I have no any items:noanyitems"}, false));
                 insertLastMessInDB('1');
-                return;
             }
+        }
+    }
 
+    private void requestToDelete(Update update, int i) {
+        SendMessage sendMessage;
+        String itemId = getIdItems()[i].split(":")[1];
+        String creatorTelegramId = sendQuery("select telegramid from items where id = "
+                + itemId + ";");
+        String requestorTelegramId = update.getCallbackQuery().getMessage().getChatId().toString();
+        String itemName = sendQuery("select item from items where id = "
+                + itemId + ";").split(" \\(")[0];
+        String textMessage = "Telegram user @" + update.getCallbackQuery().getMessage().getChat().getUserName() +
+                " try to delete an item with name _" + itemName + "_. Do you accept?";
+        try {
+            sendMessage = new SendMessage(creatorTelegramId, textMessage);
+            sendMessage.setReplyMarkup(showButtons(true, new String[]{"Accept:accept&" + itemId + "&" +
+                    requestorTelegramId, "Decline:decline&" + itemId + "&" + requestorTelegramId}, false));
+            sender.execute(sendMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+//        if (responceToDelete()) sendQuery("delete FROM items WHERE id = "
+//                + itemId + ";");
+//        else hasCallBack(update, "Cancel in delete" + getItems()[i].split(":")[0]);
+    }
+
+    private void responceToDelete(Update update, boolean acceptToDelete, String requestorTelegramId, String deletedItemId){
+        SendMessage sendMessage;
+        String itemName = sendQuery("select item from items where id = "
+                + deletedItemId + ";").split(" \\(")[0];
+        String textMessage;
+        String textMessage2;
+        if (acceptToDelete) {
+            sendQuery("delete FROM items WHERE id = " + deletedItemId + ";");
+            textMessage = "Removing of item " + itemName + " was accepted";
+            textMessage2 = "Done :)";
         } else {
-            return;
+            textMessage = "Removing of item " + itemName + " was declined";
+            textMessage2 = "Ok. Canceled.";
+        }
+        try {
+            sendMessage = new SendMessage(requestorTelegramId, textMessage);
+            sendMessage.setReplyMarkup(showButtons(true, new String[]{}, true));
+            sender.execute(sendMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+        try {
+            sendMessage = new SendMessage(update.getCallbackQuery().getMessage().getChatId().toString(), textMessage2);
+            sendMessage.setReplyMarkup(showButtons(true, new String[]{}, true));
+            sender.execute(sendMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
         }
     }
 
